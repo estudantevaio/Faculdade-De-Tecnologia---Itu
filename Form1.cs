@@ -3,65 +3,156 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-namespace Sistema_Para_Registro_Financeiro
+namespace Prova
 {
     public partial class Form1 : Form
     {
-        private double saldoAtual;
         public Form1()
         {
             InitializeComponent();
-            dtpData.Value = DateTime.Now;
-
-            StreamWriter streamWriter = new StreamWriter("Controle Financeiro.txt");
-            streamWriter.WriteLine("INÍCIO DA SESSÃO - " + DateTime.Now.ToString("dd/MM/yyyy HH:mm"));
-            streamWriter.Close();
         }
 
-        private void btnRegistrar_Click(object sender, EventArgs e)
+        private void Form1_Load(object sender, EventArgs e)
         {
-            try
+            CarregarLancamento();
+            cmbTipo.Items.AddRange(new string[] { "Entrada", "Saída" });
+            cmbFiltroTipo.Items.AddRange(new string[] { "Todos", "Entrada", "Saída" });
+            cmbFiltroTipo.SelectedIndex = 0;
+            AtualizarSaldo();
+        }
+
+        private void CarregarLancamento()
+        {
+            string filtroTipo = cmbFiltroTipo.SelectedItem?.ToString() ?? "";
+            string filtroDescricao = txbFiltroDescricao.Text;
+
+            DataTable dt = Lancamento.listarLancamento(filtroTipo, filtroDescricao);
+            dataGridView1.DataSource = dt;
+        }
+
+        private void AtualizarSaldo()
+        {
+            decimal saldo = Lancamento.calcularSaldo();
+            lblSaldo.Text = $"Saldo Atual: R$ {saldo.ToString("N2")}";
+
+            if(saldo >= 0)
             {
-                if (txbDescricao.Text == "")
-                {
-                    MessageBox.Show("Digite uma descrição, por favor. ");
-                    return; 
+                lblSaldo.ForeColor = System.Drawing.Color.Green;
+            }
+            else 
+            {
+                lblSaldo.ForeColor = System.Drawing.Color.Red;
+            }
+         }
+
+        private void btnSalvar_Click(object sender, EventArgs e)
+        {
+            if(string.IsNullOrEmpty(txbDescricao.Text) || string.IsNullOrEmpty(txbValor.Text) || cmbTipo.SelectedItem == null)
+            {
+                MessageBox.Show("Preencha todos os campos, por favor.");
+                return;
+            }
+
+            Lancamento lancamento = new Lancamento();
+            lancamento.descricao = txbDescricao.Text;
+            lancamento.valor = decimal.Parse(txbValor.Text);
+            lancamento.dataLancamento = dateTimePicker1.Value;
+            lancamento.tipo = cmbTipo.SelectedItem.ToString();
+
+            if(lancamento.gravarLancamento())
+            {
+                MessageBox.Show("Lançamento salvo com sucesso.");
+                CarregarLancamento();
+                AtualizarSaldo();
+                LimparCampos();
+            }
+            else 
+            {
+                MessageBox.Show("Erro ao salvar o lanlamento.");
+            }
+        }
+
+        private void btnExcluir_Click(object sender, EventArgs e)
+        {
+            if(dataGridView1.SelectedRows.Count > 0)
+            {
+                int id = Convert.ToInt32(dataGridView1.SelectedRows[0].Cells["Id"].Value);
+
+                DialogResult resultado = MessageBox.Show("Tem certeza que deseja excluir este lançamento?", "Confirmação", MessageBoxButtons.YesNo);
+
+                if(resultado == DialogResult.Yes)
+                 {
+                     Lancamento lancamento = new Lancamento();
+                     lancamento.id = id;
+
+                    if(lancamento.excluirLancamento())
+                    {
+                        MessageBox.Show("Lançamento excluído com sucesso.");
+                        CarregarLancamento();
+                        AtualizarSaldo();
+                    }
+                    else
+                    {
+                        MessageBox.Show("Erro ao excluir o lançamento.");
+                    }
                 }
-
-                double credito = 0;
-                double debito = 0;
-
-                if (txbCredito.Text != "")
-                    credito = double.Parse(txbCredito.Text);
-
-                if (txbDebito.Text != "")
-                    debito = double.Parse(txbDebito.Text);
-
-                saldoAtual = saldoAtual + credito - debito;
-
-                StreamWriter writer = new StreamWriter("Controle Financeiro.txt", true);
-                writer.WriteLine(txbDescricao.Text + "; " + dtpData.Value.ToString("dd/MM/yyyy") + "; Crédito: R$ " + credito.ToString("N2") + "; Débito: R$ " + debito.ToString("N2") + "; Saldo Atual: R$ " + saldoAtual.ToString("N2") + ". ");
-                
-                writer.Close();
-
-                MessageBox.Show("Registro salvo. Saldo atual: R$ " + saldoAtual.ToString("N2"));
-
-                txbDescricao.Clear();
-                txbCredito.Clear();
-                txbDebito.Clear();
-                txbDescricao.Focus();
             }
-            
-            catch (Exception ex)
+            else
             {
-                MessageBox.Show("Erro ao gravar. " + ex.Message);
+                MessageBox.Show("Selecione um lançamento para exclur.");
             }
+        }
+
+        private void btnEditar_Click(object sender, EventArgs e)
+        {
+            if(dataGridView1.SelectedRows.Count > 0)
+            {
+                int id = Convert.ToInt32(dataGridView1.SelectedRows[0].Cells["Id"].Value);
+
+                Lancamento lancamento = new Lancamento();
+                lancamento = lancamento.consultarLancamento(id);
+
+                if (lancamento != null)
+                {
+                    txbDescricao.Text = lancamento.descricao;
+                    txbValor.Text = lancamento.valor.ToString();
+                    dateTimePicker1.Value = lancamento.dataLancamento;
+                    cmbTipo.SelectedItem = lancamento.tipo;
+
+                    btnSalvar.Tag = lancamento.id;
+                    btnSalvar.Text = "Atualizar";
+                }
+            }
+            else
+            {
+                MessageBox.Show("Selecioe um lançamento para editar, por favor.");
+            }
+        }
+
+        private void btnFiltrar_Click(object sender, EventArgs e)
+        {
+            CarregarLancamento();
+            AtualizarSaldo();
+        }
+
+        private void LimparCampos()
+        {
+            txbDescricao.Clear();
+            txbValor.Clear();
+            dateTimePicker1.Value = DateTime.Now;
+            cmbTipo.SelectedIndex = -1;
+            btnSalvar.Tag = null;
+            btnSalvar.Text = "Salvar";
+        }
+
+        private void btnLimpar_Click(object sender, EventArgs e)
+        {
+            LimparCampos();
         }
     }
 }
